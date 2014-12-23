@@ -1,0 +1,22 @@
+package WG::Dev;
+
+use Moose;
+
+use Class::Load;
+
+has 'wg' => ( is => 'ro' , isa => 'WG' , required => 1 , weak_ref => 1);
+
+=head1 NAME
+
+WG::Dev - A developer with all the funky actions he can do.
+
+=cut
+
+sub schema_dump{
+  my ($self) = @_;
+  Class::Load::load_class('DBIx::Class::Schema::Loader');
+
+}
+
+
+__PACKAGE__->meta->make_immutable();

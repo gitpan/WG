@@ -1,0 +1,113 @@
+#! /usr/bin/env perl
+use strict;
+use warnings;
+
+use FindBin;
+BEGIN { unshift @INC, "$FindBin::Bin/../lib" }
+
+use Getopt::Long;
+use Devel::REPL;
+
+use Pod::Text;
+
+use Log::Any::Adapter;
+use Log::Log4perl qw/:easy/;
+
+Log::Any::Adapter->set('Log4perl');
+
+use Log::Any qw/$log/;
+
+use WG;
+
+
+
+sub usage{
+  print qq|$0 -c <conf file>
+
+|;
+  exit(1);
+}
+
+my $verbose = 0;
+my $conf_file;
+
+Getopt::Long::Configure( "pass_through" );
+GetOptions( "c=s" => \$conf_file,
+            "v" => \$verbose
+          );
+
+unless( $verbose ){
+  Log::Log4perl->easy_init($INFO);
+}else{
+  Log::Log4perl->easy_init($TRACE);
+}
+
+
+unless( $conf_file ){ usage(); }
+
+our $wg = WG->new({ config_file => $conf_file });
+
+## Accessing config makes sure the conf file is ok
+$wg->config();
+$log->info('OK');
+
+my $repl = Devel::REPL->new;
+
+my $pod2text = sub{
+    my ($o) = @_;
+    unless( $o ){
+        return 'Try $wg or help($wg)'."\n";
+    }
+    my $class = ref($o) || $o;
+    my $short_package = $class;
+    $short_package =~ s/::/\//g;
+    $short_package =~ s/$/.pm/;
+    my $package_file = $INC{$short_package};
+
+    unless( $package_file ){
+        return "Sorry, cannot file absolute file for $class ( $short_package )\n";
+    }
+
+    my $output;
+    my $p2txt = Pod::Text->new();
+    $p2txt->output_string(\$output);
+    $p2txt->parse_file($package_file);
+    return $output;
+};
+
+## Inject the instance of s2 in the shell lexical environment.
+$repl->load_plugin('Commands');
+$repl->command_set()->{pod} = sub{ return $pod2text };
+$repl->command_set()->{help} = sub{ return $pod2text };
+
+$repl->load_plugin('ReadLineHistory');
+$repl->load_plugin('LexEnv');
+$repl->lexical_environment->do(q|my $wg = $main::wg ;
+|);
+## Various autocompletion.
+$repl->load_plugin('CompletionDriver::LexEnv');
+$repl->load_plugin('CompletionDriver::Methods');
+$repl->load_plugin('CompletionDriver::INC');
+
+## Some clever prompt
+$repl->load_plugin('FancyPrompt');
+$repl->fancy_prompt(sub {
+ my $self = shift;
+ return 'wg ['.$wg->config_file().']=> ';
+});
+
+## Allow multiline statements.
+$repl->load_plugin('MultiLine::PPI');
+
+# And run!
+
+if( my $script = shift @ARGV ){
+    $log->info("Loading $script file for execution");
+    my $code = File::Slurp::read_file($script);
+    $repl->lexical_environment->do($code);
+}else{
+    # This is interactive.
+    $repl->run();
+}
+
+$log->info("Bye!");

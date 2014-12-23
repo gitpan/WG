@@ -1,0 +1,6 @@
+package WG::Test;
+
+use Moose;
+extends qw/WG/;
+
+__PACKAGE__->make_immutable();
